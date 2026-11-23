@@ -1,0 +1,79 @@
+menu "Network (WiFi + MQTT)"
+
+    config NET_WIFI_SSID
+        string "WiFi 名称（SSID）"
+        default "ESP"
+        help
+            原 STM32 工程里硬编码在 ESP8266.c 的 AT+CWJAP 命令中，就是 "ESP"。
+            用手机热点的话，"ESP" 就是热点的名字。
+
+    config NET_WIFI_PASSWORD
+        string "WiFi 密码"
+        default "12345678"
+        help
+            留空表示开放网络。注意 ESP32 只支持 2.4GHz，5GHz 热点连不上。
+
+    config NET_MQTT_URI
+        string "MQTT broker 地址"
+        default "mqtt://broker.emqx.io:1883"
+        help
+            mqtt://  明文 1883
+            mqtts:// TLS 8883（需要 CA 证书，体积会增加约 8KB）
+            公共测试 broker 用 broker.emqx.io，换成自己的内网地址也行。
+
+    config NET_MQTT_CLIENT_ID
+        string "MQTT 客户端 ID"
+        default "my_device_001"
+        help
+            同一个 broker 上 client_id 必须唯一，两个设备用同一个 ID
+            会互相把对方踢下线。
+
+    config NET_TOPIC_PREFIX
+        string "主题前缀"
+        default "device/my_device_001"
+        help
+            实际用到四个主题：
+                <前缀>/data    上行遥测
+                <前缀>/set     下行命令
+                <前缀>/ack     命令回执
+                <前缀>/status  在线状态（遗嘱消息，retain）
+
+    config NET_MQTT_USERNAME
+        string "MQTT 用户名（可空）"
+        default ""
+
+    config NET_MQTT_PASSWORD
+        string "MQTT 密码（可空）"
+        default ""
+
+    config NET_MQTT_QOS
+        int "上报 QoS"
+        range 0 1
+        default 1
+        help
+            0 = 发出去就不管（可能丢）
+            1 = 至少送达一次（broker 回 PUBACK，最多重发一次）
+            2 = 恰好一次（握手三次，代价大，本项目不需要）
+
+    config NET_UPLINK_PERIOD_MS
+        int "上报周期（毫秒）"
+        default 2000
+        help
+            原工程 NET_UPLINK_PERIOD_MS 也是 2 秒。
+
+    config NET_UPLINK_TASK_STACK
+        int "上报任务栈大小（字节）"
+        default 4096
+        help
+            注意 ESP-IDF 里栈的单位是字节，不是字。
+            snprintf 拼 JSON 会用到不少栈，4KB 比较稳妥。
+
+    config NET_UPLINK_TASK_PRIO
+        int "上报任务优先级"
+        range 1 17
+        default 8
+        help
+            ESP-IDF 内部任务的优先级：lwIP 18、esp_timer 22、WiFi 23、IPC 24/25。
+            所以设置的任务不要超过 17，否则会把网络协议栈饿死。
+
+endmenu

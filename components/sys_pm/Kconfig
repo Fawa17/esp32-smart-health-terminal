@@ -1,0 +1,57 @@
+menu "电源管理（屏幕休眠 + 按键唤醒）"
+
+config SYS_PM_KEY_GPIO
+    int "唤醒按键 GPIO"
+    default 14
+    range 0 48
+    help
+      接 GND 的轻触按键接到哪个脚。
+
+      ⚠ 不建议用 GPIO0：它是 strapping 脚，复位瞬间被拉低会进下载模式。
+      按着这个键重启、或者 OTA 重启时正好压着，板子会停在 bootloader 里，
+      现象像"变砖了"，要拔线重插才好。
+
+      推荐 14 / 15 / 16 / 17：空闲、非 strapping、且能被轻睡唤醒。
+      不要用 33~37（八线 PSRAM）、0/3/45/46（strapping）、19/20（USB）。
+
+config SYS_PM_KEY_ACTIVE_LOW
+    bool "按键低电平有效（一端接 GND）"
+    default y
+    help
+      最常见的接法：按键一端接 GPIO、另一端接 GND，靠内部上拉。
+      选否则是按键一端接 3V3、靠内部下拉（少见）。
+
+config SYS_PM_IDLE_TIMEOUT_S
+    int "无操作自动息屏（秒）"
+    default 30
+    range 5 600
+    help
+      亮屏后这么久没有触摸/按键就自动息屏。
+      息屏后采集和上传照常跑，跌倒检测不受影响。
+
+config SYS_PM_START_ACTIVE
+    bool "上电后直接亮屏"
+    default y
+    help
+      关掉它则上电即息屏 —— 用来验证"按一下能不能亮起来"这条链路，
+      也能顺便量一下息屏时的电流。
+
+config SYS_PM_TASK_STACK
+    int "管理任务栈大小（字节）"
+    default 3072
+    help
+      注意 ESP-IDF 的栈深单位是**字节**，不是字。
+
+config SYS_PM_TASK_PRIO
+    int "管理任务优先级"
+    default 6
+    range 1 17
+    help
+      上限 17：IDF 内置任务 lwIP=18、esp_timer=22、WiFi=23、IPC=24/25。
+
+config SYS_PM_TASK_CORE
+    int "管理任务绑定核心"
+    default 1
+    range -1 1
+
+endmenu

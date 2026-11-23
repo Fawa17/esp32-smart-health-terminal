@@ -1,0 +1,71 @@
+menu "MAX30102"
+
+    config MAX30102_SAMPLE_TASK_STACK
+        int "采样任务栈大小（字节）"
+        default 3072
+        help
+            单位是**字节**，不是 STM32 FreeRTOS 的“字”。
+            STM32 版写 80 字≈320 字节，在 ESP-IDF 下必须按字节写。
+            该任务只做 I2C 读 + 填缓冲，3072 足够。
+
+    config MAX30102_SAMPLE_TASK_PRIO
+        int "采样任务优先级"
+        default 15
+        range 1 17
+        help
+            必须 ≤17。ESP-IDF 内部占用了 18(lwIP) / 22(esp_timer) /
+            23(WiFi) / 24-25(IPC)，超过会把网络打崩。
+            采样要跟着 100Hz 的 INT 走，比 MPU6050(14) 略高。
+
+    config MAX30102_SAMPLE_TASK_CORE
+        int "采样任务绑定核心"
+        default 1
+        range 0 1
+        help
+            核 0 留给 WiFi/MQTT 协议栈，核 1 放采集与算法。
+
+    config MAX30102_HR_TASK_STACK
+        int "心率算法任务栈大小（字节）"
+        default 6144
+        help
+            maxim_heart_rate_and_oxygen_saturation() 内部有多组
+            BUFFER_SIZE(200) 长度的 int32 数组，栈要留足。
+
+    config MAX30102_HR_TASK_PRIO
+        int "心率算法任务优先级"
+        default 13
+        range 1 17
+
+    config MAX30102_HR_TASK_CORE
+        int "心率算法任务绑定核心"
+        default 1
+        range 0 1
+
+config MAX30102_POLL_MS
+        int "采样轮询周期（毫秒）"
+        default 20
+        range 10 100
+        help
+            芯片固定 100 sps，代码按"每 N ms 取 N/10 个样本"与之 1:1 对齐。
+
+            10 = 每 10ms 读 1 个样本（旧行为，100 次总线事务/秒）；
+            20 = 每 20ms 读 2 个样本（事务数减半，默认）；
+            50 = 每 50ms 读 5 个样本（事务数降到 1/5，延迟稍大）。
+
+            上限 100 是保守值：FIFO 深度 32，100ms 只攒 10 个，仍有 320ms 余量。
+            改大不会丢数据，只会让心率窗口攒满得慢一点（200 点 = 2 秒）。
+
+    config MAX30102_DEBUG_DIAG
+        bool "打印周期诊断（每 5 秒一行体检报告）"
+        default n
+        help
+            打开后每 5 秒打印 FIFO 写/读指针、中断计数、窗口进度、
+            片内温度、0x00~0x06 整块寄存器快照。
+
+            作用是把"没数"的原因直接说清楚：写指针不动 = 芯片没在采样；
+            指针在动但中断为 0 = INT 线没接；数据进了 FIFO 却没被读走 = 读的节奏不对。
+
+            默认关闭 —— 它每 5 秒刷 3 行，会把 OTA / MQTT / 看门狗的日志盖住。
+            调这颗芯片时再打开。注意：掉线检测不受它影响。
+
+endmenu

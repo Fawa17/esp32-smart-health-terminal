@@ -1,0 +1,27 @@
+# 统一换行符：仓库里一律存 LF，检出时由各平台自己决定
+* text=auto eol=lf
+
+# 二进制文件不参与任何文本转换
+*.bin   binary
+*.bin.old binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.elf   binary
+*.map   binary
+
+# Windows 脚本必须保持 CRLF，否则 powershell/cmd 解析会出问题
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.sln   text eol=crlf
+*.vcxproj text eol=crlf
+
+# 这些文件不做 diff，避免提交时刷屏
+*.bin   -diff
+*.png   -diff
+*.jpg   -diff

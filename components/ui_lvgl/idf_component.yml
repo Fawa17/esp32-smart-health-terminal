@@ -1,0 +1,4 @@
+dependencies:
+  # LVGL v9。首次构建会从 components.espressif.com 下载源码到 managed_components/，
+  # 之后走本地缓存，离线也能编。
+  lvgl/lvgl: "^9.2.0"

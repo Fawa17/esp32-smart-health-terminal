@@ -1,0 +1,35 @@
+menu "OTA 升级"
+
+    config OTA_CONFIRM_TIMEOUT_S
+        int "新固件确认超时（秒）"
+        range 15 600
+        default 60
+        help
+            新固件第一次启动时处于 PENDING_VERIFY 状态，bootloader 还没承认它。
+            在这个时间内必须"证明自己能工作"（默认判据是连上 MQTT），
+            否则自动回滚到上一个固件。
+
+            取值建议：比你设备正常联网耗时（开机 → WiFi 关联 → 拿 IP → MQTT 连上）
+            的 3 倍以上。太小会在网络慢的时候把好固件回滚掉；
+            太大则坏固件会多跑一会儿才被退回。
+
+    config OTA_CONFIRM_TASK_STACK
+        int "确认任务栈大小（字节）"
+        default 4096
+        help
+            单位是字节，不是字。这个任务只做 sleep + 一次 flash 写，4KB 足够。
+
+    config OTA_TASK_STACK
+        int "下载任务栈大小（字节）"
+        default 8192
+        help
+            单位是字节。里面有 esp_http_client 的调用链，
+            如果以后改成 https 还要再多留一些（TLS 握手很吃栈）。
+
+    config OTA_HTTP_TIMEOUT_MS
+        int "HTTP 连接/读超时（毫秒）"
+        default 20000
+        help
+            局域网一般 1~2 秒就结束了；这个值只在网络很差时起作用。
+
+endmenu

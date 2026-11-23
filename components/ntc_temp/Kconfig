@@ -1,0 +1,99 @@
+menu "NTC 温度模块（4 针 AO/DO）"
+
+    config NTC_TEMP_ADC_CHANNEL
+        int "ADC1 通道号（0~9，对应 GPIO1~GPIO10）"
+        default 3
+        range 0 9
+        help
+            ESP32-S3 上 ADC1_CHn 固定接 GPIO(n+1)：
+              CH0=GPIO1  CH1=GPIO2  CH2=GPIO3  CH3=GPIO4  CH4=GPIO5
+              CH5=GPIO6  CH6=GPIO7  CH7=GPIO8  CH8=GPIO9  CH9=GPIO10
+            注意 CH7/CH8（GPIO8/9）已经被 I2C 总线占用，别选。
+            也不要选 GPIO0/3/45/46 这些 strapping 脚。
+
+    config NTC_TEMP_R_FIXED
+        int "模块上的分压电阻阻值（欧姆）"
+        default 10000
+        help
+            蓝色 NTC 模块上一般印着 103，即 10kΩ。
+            这个值和 NTC 的标称值（R25）通常相同，但以实测为准：
+            万用表量一下模块上那颗贴片电阻最保险。
+
+    config NTC_TEMP_R25
+        int "NTC 在 25℃ 时的标称阻值（欧姆）"
+        default 10000
+        help
+            常见 10k（103）或 100k（104）。买模块时卖家页面会写。
+
+    config NTC_TEMP_B_VALUE
+        int "NTC 的 B 值（K）"
+        default 3950
+        range 1000 10000
+        help
+            常见 3435 / 3950 / 3977。填错会让整条曲线整体偏移几度，
+            这是 NTC 测温最常见的"读数总差 2℃"原因。
+
+    config NTC_TEMP_NTC_TO_GND
+        bool "NTC 接在 GND 侧（AO 随温度升高而降低）"
+        default y
+        help
+            分压方向决定反算公式：
+              y（NTC 到 GND）：R = Rfix * Vout / (Vcc - Vout)，温度↑→R↓→Vout↓
+              n（NTC 到 VCC）：R = Rfix * (Vcc - Vout) / Vout，温度↑→R↓→Vout↑
+            不确定就两种都试：用手捏住 NTC，看串口温度是变大还是变小，
+            如果变成"越来越冷"，把这个选项翻一下即可。
+
+    config NTC_TEMP_VCC_MV
+        int "模块供电电压（毫伏）"
+        default 3300
+        range 1800 3600
+        help
+            建议直接用 3V3。用 5V 会超过 ESP32-S3 ADC 的 3.1V 量程上限。
+
+    config NTC_TEMP_TASK_STACK
+        int "采样任务栈大小（字节）"
+        default 3072
+        help
+            单位是字节。任务里会跑 logf()，别给太小。
+
+    config NTC_TEMP_TASK_PRIO
+        int "采样任务优先级"
+        default 4
+        range 1 17
+        help
+            温度 2 秒才更新一次，优先级给最低档即可（原工程也是 4）。
+
+    config NTC_TEMP_TASK_CORE
+        int "采样任务绑定核心"
+        default 1
+        range 0 1
+
+    config NTC_TEMP_PERIOD_MS
+        int "采样周期（毫秒）"
+        default 2000
+        range 200 60000
+        help
+            NTC 响应时间本身就有几秒（探头带金属壳的更慢），
+            2 秒一次完全够用，没必要更快。
+
+config NTC_TEMP_OFFSET_X10
+        int "体表→体温的校准偏移（单位 0.1℃，默认 +30 即 +3.0℃）"
+        default 30
+        range -100 100
+        help
+            NTC 贴在手指/手腕上量到的是**皮肤温度**，本身就比口腔/腋下低 2~4℃。
+            所以"手捏住了也只有 33℃"是正常物理现象，不是算法错。
+
+            但项目里的判据是按核心体温定的：
+              app_data 的 temp_min = 35.0℃（低于它认为"没贴合"，温度发 null）
+              temp_max = 37.5℃（发热告警线）
+            皮肤温度永远够不着这两条线，于是温度一直显示 --。
+
+            这里加一个偏移把皮肤温度换算成体温估计值。标定方法：
+              1) 用一支准确体温计同时测同一个位置（最好都是腋下）
+              2) 看串口打印的原始温度，与体温计读数相减
+              3) 差值填到这里（单位 0.1℃，例如差 3.0℃ 就填 30）
+
+            设置成 0 表示不做补偿、直接显示皮肤温度。
+
+endmenu

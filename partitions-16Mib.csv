@@ -1,0 +1,17 @@
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,0x6000,
+phy-init,data,phy,0xf000,0x1000,
+# otadata：8KB，两个扇区。bootloader 在这里记录"下次从 ota_0 还是 ota_1 启动"，
+# 以及每个槽位的状态（新固件启动失败时靠它回滚）
+otadata,data,ota,0x10000,0x2000,
+# ⚠ app 分区必须按 0x10000（64KB）对齐，否则构建直接报
+#   "Partition ota_0 invalid: Offset 0x12000 is not aligned to 0x10000"
+# 两个槽位各 2MB。当前固件约 1.03MB，上 LVGL 后预计 1.5MB，留 33% 余量。
+ota_0,app,ota_0,0x20000,0x200000,
+ota_1,app,ota_1,0x220000,0x200000,
+# 崩溃现场：panic 时 IDF 自动把 PC / 各任务栈 / 调用栈写到这块，
+# 重启后由 components/crash_log 读出来 —— 相当于 STM32"写备份寄存器"的升级版
+coredump,data,coredump,0x420000,0x10000,
+storage,data,spiffs,0x430000,0x400000,
+vfs,data,fat,0x830000,0x7D0000,

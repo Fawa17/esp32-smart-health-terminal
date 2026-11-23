@@ -1,0 +1,111 @@
+menu "应用模式"
+
+    choice APP_RUN_MODE
+        prompt "上电跑哪个模式"
+        default APP_RUN_MODE_ALL
+        help
+            几个器件共用同一条 I2C 总线时（OLED 0x3C / MPU6050 0x68 / MAX30102 0x57），
+            其中一个接线错、甚至把 SDA 拉死，会连累另外两个一起初始化失败。
+            出了这种"全都读不到"的情况，用这里选只测一个器件，把问题隔离出来。
+
+            每个模式都会把原始读数打出来，方便对着现象查线。
+
+        config APP_RUN_MODE_ALL
+            bool "全部运行（正常使用）"
+            help
+                五个模块全部初始化并跑任务，每 2 秒打印一行汇总。
+
+        config APP_RUN_MODE_I2C_ONLY
+            bool "只扫 I2C 总线"
+            help
+                只初始化 I2C，每 5 秒扫一遍 0x08~0x77 并打印。
+                现在这条总线上应有的器件：0x15(触摸 IC) / 0x57(MAX30102) / 0x68(MPU6050)。
+                注意 0x3C(旧 OLED) 已经换成 SPI 屏，扫描表里不该再出现它。
+                一个都扫不到 → 上拉电阻、SDA/SCL 接反、或者器件没供电。
+
+        config APP_RUN_MODE_MPU_ONLY
+            bool "只测 MPU6050"
+            help
+                每 200ms 打印三轴加速度原始值和步数。拿起板子晃动，数值应该跟着变。
+
+        config APP_RUN_MODE_MAX_ONLY
+            bool "只测 MAX30102"
+            help
+                每 500ms 打印 FIFO 读到的红光/红外原始值。
+                手指放上去红外的 DC 会明显抬升；一直不变说明灯没亮或没通电。
+
+        config APP_RUN_MODE_NTC_ONLY
+            bool "只测 NTC 温度"
+            help
+                每 1 秒打印 ADC 原始计数和换算后的温度。
+                手指捏住探头，温度应该往上升。
+
+        config APP_RUN_MODE_RTC_ONLY
+            bool "只测 DS1302"
+            help
+                每 1 秒打印一次时间，顺带报告 CH 停振位。
+                秒数不走 → 晶振没起振；读到 00-00-00 → 电池没装或掉电了。
+
+    config APP_RUN_MODE_DISP_ONLY
+            bool "只测屏幕（ST7789）"
+            help
+                先全屏刷 红/绿/蓝/白/黑，再画一版静态界面和秒计数。
+                黑屏但背光亮 → SPI 接线或 DC/RST 接错；
+                花屏、错位 → SPI 频率太高，降到 20 MHz；
+                红蓝互换 → 关掉 Display 菜单里的 BGR 选项；
+                白底黑字变黑底白字 → 切换 Display 菜单里的反色选项。
+
+    endchoice
+
+endmenu
+
+menu "日志"
+
+    config APP_LOG_VERBOSE
+        bool "每 2 秒打印一条传感器汇总"
+        default n
+        help
+            打开后串口会每 2 秒出现一行：
+                I (4537) app: [2026-11-08 19:54:43] 步数=0 跌倒=0 | 心率=78(有效) …
+            平时建议关掉 —— 它会盖住 OTA、MQTT、看门狗这些真正需要盯的日志。
+            调传感器、对着数据查问题时再打开。
+
+    config APP_LOG_STACK
+        bool "每 30 秒打印一次所有任务的栈余量"
+        default n
+        help
+            打开后每 30 秒输出一张全任务栈余量表：
+                I (306215) watchdog: 任务栈余量（单位：字节…）：
+                I (306216) watchdog:   main    prio= 1 余=  1088
+                I (306229) watchdog:   ui      prio= 4 余=   652  <== 偏小，注意
+
+            "余" 是 uxTaskGetStackHighWaterMark() 的返回值 —— 从任务启动到现在
+            的**历史最小剩余**，单位是字节。注意 ESP-IDF 返回字节，标准 FreeRTOS
+            返回 word，移植时别照抄。
+
+            定栈公式：新栈 = (初始栈 - 最小余量) × 1.3 + 512
+
+            用法：打开 → 烧录 → 把 OTA 升级 / 告警弹窗 / 息屏唤醒 / 断线重连
+            各触发一次 → 跑够 24 小时 → 抄下数据 → 关掉这项。
+            只在测栈时开：平时开着会刷屏，而且 uxTaskGetSystemState 要遍历
+            所有任务，对实时性有轻微影响。
+
+endmenu
+
+menu "OTA"
+
+    config APP_OTA_URL
+        string "固件下载地址（界面「开始升级」按钮用）"
+        default ""
+        help
+            屏幕设置页那个「开始升级」按钮会请求这个地址的 .bin。
+            例：http://192.168.1.10:8001/sample_project.bin
+
+            留空 = 按钮点了只打一条警告，什么都不做。
+            注意这个 IP 是**电脑**的局域网地址，电脑换了网络就要改这里。
+
+            也可以用 MQTT 下发（更灵活，不用重新编译）：
+              topic: device/my_device_001/set
+              {"cmd":"ota","url":"http://…/sample_project.bin"}
+
+endmenu

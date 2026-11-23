@@ -1,0 +1,36 @@
+menu "MPU6050 驱动"
+
+    config MPU6050_TASK_STACK
+        int "采样任务栈大小（字节）"
+        range 2048 8192
+        default 3072
+        help
+            注意 ESP-IDF 的 xTaskCreate 栈参数单位是【字节】，不是 STM32 工程里的"字"。
+            原工程 CFG_STK_MPU = 80（字）= 320 字节，在 IDF 里必然栈溢出，
+            因为 ESP_LOG / I2C 驱动调用都比裸机 HAL 重得多。3072 字节是实测余量充足的值。
+
+    config MPU6050_TASK_PRIO
+        int "采样任务优先级"
+        range 1 17
+        default 14
+        help
+            上限是 17。ESP-IDF 内部占用了更高优先级：
+            lwIP=18、esp_timer=22、WiFi=23、IPC=24/25。
+            把应用任务设到 18 以上会饿死网络栈，表现为 MQTT 断连、ping 超时。
+
+    config MPU6050_TASK_CORE
+        int "采样任务绑定的核"
+        range 0 1
+        default 1
+        help
+            核 0 跑 WiFi/lwIP 协议栈和大部分系统任务，采样/算法/显示放核 1 可以减少被抢占。
+
+    config MPU6050_SAMPLE_PERIOD_MS
+        int "采样周期（毫秒）"
+        range 10 200
+        default 40
+        help
+            原工程 40ms（25Hz）。计步/跌倒的阈值（300ms/800ms/1500ms）是按这个周期调的，
+            改成其它值需要重新标定 STEP_*/FALL_* 参数。
+
+endmenu

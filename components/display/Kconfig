@@ -1,0 +1,107 @@
+menu "Display (TK0134 240x296)"
+
+    config DISP_PIN_SCLK
+        int "SPI SCK 引脚"
+        default 12
+        help
+            接模块的 SCK/SCL。默认 GPIO12。
+            必须避开 26~32（Flash）、33~37（八线 PSRAM）、19/20（USB）、
+            0/3/45/46（strapping 脚）。
+
+    config DISP_PIN_MOSI
+        int "SPI MOSI 引脚（模块上的 SDA/DIN）"
+        default 11
+        help
+            注意：这个模块上同时印着 SDA 和 MOSI。
+            - 显示用的 MOSI：这一项，接 GPIO11。
+            - 触摸用的 SDA：并到 I2C 总线（见 Touch 菜单），不是这一项。
+
+    config DISP_PIN_CS
+        int "SPI CS 引脚"
+        default 10
+
+    config DISP_PIN_DC
+        int "DC（数据/命令选择）引脚"
+        default 13
+
+    config DISP_PIN_RST
+        int "RES 复位引脚"
+        default -1
+        help
+            填 -1 表示模块没有 RES 脚（8 针二合一模块：VCC/GND/SCL/SDA/CS/DC/SCK/MOSI），
+            此时驱动会先发软件复位命令（SWRESET 0x01）再初始化，一般够用。
+            如果模块有 RES 脚，填对应 GPIO 更可靠。
+
+    config DISP_PIN_BL
+        int "背光 BL 引脚（PWM 调光）"
+        default -1
+        help
+            填 -1 表示模块没有 BL 脚（8 针模块就没有），背光在模块内部常亮，
+            此时 disp_backlight_set() 无效。
+            如果模块有 BL 脚又想要调光，就填一个空闲 GPIO。
+
+    config DISP_SPI_CLK_HZ
+        int "SPI 时钟频率 (Hz)"
+        default 40000000
+        range 1000000 80000000
+        help
+            40 MHz 下整帧 141.6 KB 约 28 ms（约 35 fps）。
+            杜邦线较长时如果出现花屏/错位，先降到 20000000 试试。
+
+    config DISP_OFFSET_X
+        int "X 偏移"
+        default 0
+
+    config DISP_OFFSET_Y
+        int "Y 偏移"
+        default 0
+        help
+            画面整体上下错位时调这个。ST7789 显存是 240x320，
+            240x296 的屏常见偏移为 0，个别模块需要填 0 或 1。
+
+    config DISP_INVERT_COLOR
+        bool "反色显示"
+        default y
+        help
+            IPS 屏有的需要反色、有的不需要。判断方法很简单：
+            界面应该是深色底 + 浅色字。如果看到的是**浅色底 + 深色字**（像照片负片），
+            就说明反色开关状态反了，把这一项切换一下。
+
+    config DISP_SWAP_BYTES
+        bool "逐像素高低字节交换"
+        default y
+        help
+            ST7789 期望每个像素先发高字节；而我们的帧缓冲是 uint16 小端存放
+            （低字节在前）。两者不一致时，颜色会整体偏色、纯色块变成怪颜色、
+            细笔画文字发虚。
+
+            现象对照：
+              - 红显示成蓝、绿显示成深绿  → 先试 DISP_BGR_ORDER
+              - 颜色整体"错位"、灰阶变成彩色 → 试这个
+            打开后每次刷屏多做一遍逐像素换字节（240*296 次，约 1~2 ms）。
+
+    config DISP_BOOT_TEST
+        bool "上电先显示 6 个色块（1.5 秒）"
+        default y
+        help
+            开机先画 红/绿/蓝/白/黑/黄 六个竖条，并打印期望顺序，然后进正常界面。
+            用来一次性判断配色问题：
+              红块显示成青色  → 反色开关反了（DISP_INVERT_COLOR）
+              红蓝互换        → DISP_BGR_ORDER 反了
+              灰阶变彩色/发虚  → DISP_SWAP_BYTES 需要打开
+            调试完可以关掉。
+
+    config DISP_BGR_ORDER
+        bool "BGR 元素顺序"
+        default n
+        help
+            红蓝互换时切换这个。多数 ST7789 模块是 BGR。
+
+    config DISP_BL_PERCENT
+        int "默认背光亮度 (%)"
+        default 80
+        range 0 100
+        help
+            只有配置了 BL 引脚才有效；没有 BL 脚时这项被忽略。
+
+endmenu

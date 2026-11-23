@@ -1,0 +1,57 @@
+# watchdog 组件配置
+#
+# 三个数字的取值逻辑：
+#   - 监控周期要比最快的业务任务周期还快，否则判断有延迟；200ms 够用
+#   - TWDT 超时要比"最长的不打卡间隙"大。监控任务 200ms 打一次卡，
+#     所以 10 秒已经非常宽松，只用来抓"监控任务自己都卡死了"这种极端情况
+#   - MAX_MISS=3：第一次超时先尝试恢复，第三次还不行就复位
+
+menu "看门狗"
+
+config WATCHDOG_TASK_STACK
+    int "监控任务栈大小（字节）"
+    default 3072
+    range 1536 8192
+    help
+        注意：ESP-IDF 的 xTaskCreate 里栈深单位是**字节**，不是 STM32 那样的"字"。
+        3072 字节对这个只做计时比较的任务非常充裕。
+
+config WATCHDOG_TASK_PRIO
+    int "监控任务优先级"
+    default 17
+    range 1 17
+    help
+        上限是 17。ESP-IDF 内置任务用了更高的号：
+        lwIP=18、esp_timer=22、WiFi=23、IPC=24/25。超过 17 会把协议栈饿死，
+        表现出来是 WiFi 断流、MQTT keepalive 超时。
+
+config WATCHDOG_TASK_CORE
+    int "监控任务所在核心"
+    default 0
+    range 0 1
+    help
+        放在 CPU0（协议栈和 main 任务所在核）。业务任务大多在 CPU1，
+        这样某一核整体卡死时，另一核的监控还能发现并复位。
+
+config WATCHDOG_PERIOD_MS
+    int "心跳检查周期（毫秒）"
+    default 200
+    range 50 2000
+
+config WATCHDOG_TWDT_TIMEOUT_S
+    int "任务看门狗 TWDT 超时（秒）"
+    default 10
+    range 3 60
+    help
+        这个超时针对的是"监控任务自己"。监控任务每 200ms reset 一次，
+        所以正常情况永远碰不到。
+
+config WATCHDOG_MAX_MISS
+    int "连续超时几次后复位"
+    default 3
+    range 1 10
+    help
+        第 1 次超时会调用恢复回调（如果注册了），第 N 次仍超时就记下
+        "哪个任务卡死"并 esp_restart()。
+
+endmenu

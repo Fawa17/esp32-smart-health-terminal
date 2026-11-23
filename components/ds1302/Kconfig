@@ -1,0 +1,36 @@
+menu "DS1302 实时时钟"
+
+    config DS1302_CLK_GPIO
+        int "SCLK 引脚号"
+        default 5
+        range 0 48
+        help
+            DS1302 的时钟线。默认 GPIO5（对应原 STM32 工程的 PB5）。
+            避开 0/3/45/46（strapping）、19/20（USB）、26~37（Flash/PSRAM）。
+
+    config DS1302_DAT_GPIO
+        int "I/O 数据引脚号"
+        default 6
+        range 0 48
+        help
+            双向数据线，驱动内部会在输入/输出之间切换。
+            默认 GPIO6（对应原工程的 PB6）。
+
+    config DS1302_RST_GPIO
+        int "RST(CE) 引脚号"
+        default 7
+        range 0 48
+        help
+            DS1302 的片选/复位线，高电平期间事务有效。默认 GPIO7（对应原工程的 PB7）。
+
+    config DS1302_BIT_DELAY_US
+        int "半个时钟周期的延时(微秒)"
+        default 2
+        range 1 50
+        help
+            DS1302 手册要求 SCLK 高低电平各不短于 250ns，2us 已有 8 倍余量。
+            ESP32-S3 上 gpio_set_level 加上函数开销本身就有百纳秒级，
+            再小就可能出现"两个电平合并成一个"的情况。
+            如果杜邦线很长（>20cm）导致偶发读错，可以调到 5。
+
+endmenu

@@ -1,0 +1,182 @@
+# 注意：符号统一用 TOUCH_I2C_ 前缀。
+# ESP-IDF 自带电容触摸传感器驱动（esp_driver_touch_sensor）已经占用了
+# CONFIG_TOUCH_* 这个命名空间（CONFIG_TOUCH_CTRL_FUNC_IN_IRAM 等），
+# 这里如果也叫 TOUCH_XXX 会混在一起，排查 sdkconfig 时非常容易看错。
+menu "Touch (I2C 触摸，与显示屏二合一)"
+
+    config TOUCH_I2C_RAW_W
+        int "触摸 IC 的 X 方向原始量程"
+        default 240
+        help
+            触摸 IC 报出来的坐标最大值 + 1。多数 240x296 模块的触摸量程
+            与显示一致（240x296），但也有些是 0~239 / 0~319。
+            如果手指点右边却显示在中间，先改这里。
+
+    config TOUCH_I2C_RAW_H
+        int "触摸 IC 的 Y 方向原始量程"
+        default 296
+
+    config TOUCH_I2C_SWAP_XY
+        bool "交换 X/Y"
+        default n
+        help
+            方向整体转了 90 度（手指左右划动时光标上下跑）时打开。
+
+    config TOUCH_I2C_MIRROR_X
+        bool "X 方向镜像"
+        default n
+        help
+            手指点左边，光标跑到右边时打开。
+
+    config TOUCH_I2C_MIRROR_Y
+        bool "Y 方向镜像"
+        default n
+        help
+            手指点上面，光标跑到下面时打开。
+
+config TOUCH_I2C_POLL_MS
+        int "触摸采样周期（毫秒）"
+        default 20
+        range 10 100
+        help
+            20ms = 50Hz。CST816S 内部采样率约 100Hz，轮询比它快没意义。
+            一次 6 字节 I2C 读约 250µs，50Hz 下占总线 1.2%，可以接受。
+
+            如果发现拖动时坐标"一格一格跳"，把它调小到 10ms。
+
+    config TOUCH_I2C_TASK_STACK
+        int "触摸任务栈大小（字节）"
+        default 3072
+        help
+            单位是字节。任务里会调用回调，回调可能打日志，别给太小。
+
+    config TOUCH_I2C_TASK_PRIO
+        int "触摸任务优先级"
+        default 5
+        range 1 17
+        help
+            低于采集任务（10~15），高于显示刷新即可。
+            不能超过 17 —— 那是 IDF 内置任务的区间（lwIP=18、esp_timer=22、WiFi=23）。
+
+    config TOUCH_I2C_TASK_CORE
+        int "触摸任务绑定核心（-1 = 不绑定）"
+        default 1
+        range -1 1
+
+config TOUCH_I2C_X_MIN
+        int "X 方向实测有效最小值"
+        default 0
+        range 0 300
+        help
+            仿射映射的四个端点：把"手指实际能到达的原始坐标区间"
+            线性铺满 0~239 / 0~295，让屏幕四边都点得到。
+
+            实测方法：烧 1.1.1 之后拿手指按屏幕四个角的最外侧，
+            看串口打印的 x/y，把最小值和最大值填进来。
+
+            本模块实测参考值（Y 已翻转）：X 10 ~ 229，Y 25 ~ 253。
+            不填（保持 0 / 239 / 0 / 295）就是 1:1 直通，也完全能用，
+            只是屏幕边缘约 10~40px 的按钮可能点不到。
+
+    config TOUCH_I2C_X_MAX
+        int "X 方向实测有效最大值"
+        default 239
+        range 0 300
+
+    config TOUCH_I2C_Y_MIN
+        int "Y 方向实测有效最小值（翻转后）"
+        default 0
+        range 0 400
+
+    config TOUCH_I2C_Y_MAX
+        int "Y 方向实测有效最大值（翻转后）"
+        default 295
+        range 0 400
+
+    config TOUCH_I2C_IRQ_GPIO
+        int "触摸 IRQ 接在哪个 GPIO（-1 = 没有引出，走轮询）"
+        default -1
+        range -1 48
+        help
+            ⚠ 默认 -1：这块模块的 IRQ（原理图 U2.20）**没有引到 8 针排针**，
+            所以出厂状态只能轮询，这一项保持 -1 即可。
+
+            如果你愿意从 CST816S 的第 20 脚飞一根线到 ESP32 的空闲 GPIO，
+            把那个脚号填进来，代码会自动切成
+            "中断唤醒 → I2C 读 → 任务处理" 的架构：
+              · 中断里只做计数和给信号量（不做 I2C、不打日志）
+              · 任务被唤醒后再读寄存器、去抖、回调上层
+              · 任务等信号量时带 3 个周期的超时兜底，中断丢了也不会卡死
+
+            可选脚位（避开已占用的）：GPIO16 / GPIO17 / GPIO38 / GPIO39 / GPIO40~42。
+
+    config TOUCH_I2C_IRQ_STORM_LIMIT
+        int "中断风暴阈值（每秒 IRQ 次数）"
+        default 200
+        range 20 2000
+        depends on TOUCH_I2C_IRQ_GPIO >= 0
+        help
+            CST816S 正常工作时 IRQ 频率 ≈ 触摸采样率（约 100Hz）。
+            接触不良或干扰时可能几毫秒内甩出上百个下降沿，把 CPU 拖死。
+
+            超过这个阈值（1 秒窗口）后，任务会关掉该中断源、
+            自动退回定时轮询，并打一条 WARNING —— 保证"触摸变慢"
+            而不是"整机卡死"。
+
+config TOUCH_I2C_DIS_AUTOSLEEP
+        bool "关闭触摸 IC 的自动休眠（写 0xFA=0x01）"
+        default y
+        help
+            原理图上 CST816S 的 IRQ（U2.20）没有引到排针，睡下去就没有
+            任何方式能唤醒，只能断电重启。所以开机时主动写 0xFA 的 bit0
+            关掉自动休眠。
+
+            如果烧进去之后触摸反而不响应了，把这一项关掉再试
+            （说明这颗的 0xFA 不是 DisAutoSleep，写坏了解析）。
+
+config TOUCH_I2C_DEBUG_LOG
+        bool "打印触摸调试日志"
+        default n
+        help
+            打开后打印每一次触摸的「按下 / 移动 / 手势 / 抬起」全过程
+            （"移动"按 200ms 限流）。只在调坐标方向、验证手势识别时用。
+
+            默认关闭：运行时不打印任何触摸日志，串口只留传感器/网络/OTA 那些。
+
+    config TOUCH_I2C_CLICK_MAX_MS
+        int "点击判定的最长按压时长（毫秒）"
+        default 500
+        range 100 2000
+        help
+            按下到抬起超过这个时长就不算"点击"（那是长按或拖动）。
+            CST816S 自己的 0x05/0x0B 单击/双击经常不给，所以点击由软件判。
+
+    config TOUCH_I2C_CLICK_DOUBLE_MS
+        int "双击时间窗口（毫秒）"
+        default 320
+        range 150 800
+        help
+            两次点击间隔小于这个值算双击。
+            抬手后驱动会先把"单击"挂起这么久，等不到第二次点击才真正报出去，
+            所以双击不会被拆成两次单击（代价是单击有 320ms 的判定延迟）。
+
+    config TOUCH_I2C_SWIPE_MIN_PX
+        int "软件补判滑动的最小位移（像素）"
+        default 40
+        range 10 200
+        help
+            CST816S 自带的手势识别偏保守：划得慢一点、距离短一点就不给结果。
+            所以抬手时如果芯片没报手势，驱动会用"起点→终点"自己推一个。
+
+            位移小于这个值就当作点击（不判滑动）。调小会更灵敏，
+            但太小时普通点按也会被误判成滑动。手感偏迟钝就降到 25~30。
+
+    config TOUCH_I2C_SWIPE_MAX_MS
+        int "软件补判滑动的最长耗时（毫秒）"
+        default 700
+        range 200 2000
+        help
+            从按下到抬起超过这个时长就不算滑动（那是慢慢拖动，不是划）。
+            调大能把慢速划动也识别出来，代价是长按拖动可能被当成滑动。
+
+endmenu

@@ -1,0 +1,1 @@
+idf_component_register(SRCS "main.c" "disp_test.c" INCLUDE_DIRS "." REQUIRES mpu6050 bsp_i2c max30102 ntc_temp hr_algo ds1302 display touch app_data net_app watchdog crash_log ota_app ui_lvgl sys_pm time_keeper)
